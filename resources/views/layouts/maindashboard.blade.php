@@ -11,20 +11,21 @@
   <link rel="stylesheet" href="{{ asset('lte/plugins/fontawesome-free/css/all.min.css') }}">
   <!-- Ionicons -->
   <link rel="stylesheet" href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css">
-  <!-- Tempusdominus Bootstrap 4 -->
-  <link rel="stylesheet" href="{{ asset('lte/plugins/tempusdominus-bootstrap-4/css/tempusdominus-bootstrap-4.min.css') }}">
-  <!-- iCheck -->
-  <link rel="stylesheet" href="{{ asset('lte/plugins/icheck-bootstrap/icheck-bootstrap.min.css') }}">
-  <!-- JQVMap -->
-  <link rel="stylesheet" href="{{ asset('lte/plugins/jqvmap/jqvmap.min.css') }}">
   <!-- Theme style -->
   <link rel="stylesheet" href="{{ asset('lte/dist/css/adminlte.min.css') }}">
-  <!-- overlayScrollbars -->
-  <link rel="stylesheet" href="{{ asset('lte/plugins/overlayScrollbars/css/OverlayScrollbars.min.css') }}">
-  <!-- Daterange picker -->
-  <link rel="stylesheet" href="{{ asset('lte/plugins/daterangepicker/daterangepicker.css') }}">
-  <!-- summernote -->
-  <link rel="stylesheet" href="{{ asset('lte/plugins/summernote/summernote-bs4.min.css') }}">
+  <!-- Custom style -->
+  <style>
+    .sidebar {
+      width: 250px; /* Adjust sidebar width as needed */
+    }
+    .preloader {
+      display: none; /* Hide preloader when page is loaded */
+    }
+    .admin-panel .image img {
+      width: 50px; /* Set image width */
+      height: 50px; /* Set image height */
+    }
+  </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
 <div class="wrapper">
@@ -35,12 +36,9 @@
   </div>
 
   <!-- Navbar -->
-    <!-- Left navbar links -->
-    <nav class="main-header navbar navbar-expand navbar-dark" style="height: 60px; background-color: #0DCAF0;">
-
-
+  <!-- Left navbar links -->
+  <nav class="main-header navbar navbar-expand navbar-dark" style="height: 60px; background-color: #0DCAF0;">
     <!-- Right navbar links -->
-
   </nav>
   <!-- /.navbar -->
 
@@ -52,92 +50,73 @@
       <span class="brand-text font-weight-light">AdminLTE 3</span>
     </a>
 
-    <!-- Sidebar -->
-    <div class="sidebar">
-      <!-- Sidebar user panel (optional) -->
-      <div class="user-panel mt-3 pb-3 mb-3 d-flex">
-        <div class="image">
-          <img src="lte/dist/img/user2-160x160.jpg" class="img-circle elevation-2" alt="User Image">
-        </div>
-        <div class="info">
-          <a href="#" class="d-block">Admin</a>
-        </div>
+    <!-- Sidebar Menu -->
+    <nav class="mt-2">
+      <ul class="nav nav-pills nav-sidebar flex-column" role="menu" data-accordion="false">
+        <!-- Sidebar admin panel (optional) -->
+        <div class="admin-panel mt-3 pb-3 mb-3 d-flex align-items-center">
+          <div class="image mr-3">
+              @if(Auth::guard('admin')->check() && Session::has('admin_image'))
+                  <img src="{{ asset(Session::get('admin_image')) }}" class="img-circle elevation-2" alt="Admin Image">
+              @else
+                  <img src="{{ asset('lte/dist/img/default-admin.png') }}" class="img-circle elevation-2" alt="Admin Image"> <!-- Default image if no admin image is set -->
+              @endif
+          </div>
+          <div class="info">
+              @if(Auth::guard('admin')->check())
+                  <a href="#" class="d-block">{{ Auth::guard('admin')->user()->name }}</a>
+              @else
+                  <a href="#" class="d-block">Guest</a>
+              @endif
+          </div>
       </div>
+      
 
-      <!-- SidebarSearch Form -->
-
-      <!-- Sidebar Menu -->
-      <nav class="mt-2">
-        <ul class="nav nav-pills nav-sidebar flex-column" role="menu" data-accordion="false">
-          <!-- Add icons to the links using the .nav-icon class
-               with font-awesome or any other icon font library -->
-          <li class="nav-item menu-open">
+        <!-- Add icons to the links using the .nav-icon class with font-awesome or any other icon font library -->
+        <li class="nav-item menu-open">
             <a href="dashboard" class="nav-link active">
-              <i class="nav-icon fas fa-tachometer-alt"></i>
-              <p>
-                Dashboard
-              </p>
+                <i class="nav-icon fas fa-tachometer-alt"></i>
+                <p>Dashboard</p>
             </a>
-          </li>
-          <li class="nav-item">
-            <a href="datauser" class="nav-link">
-                <i class="nav-icon fas fa-user"></i>
-              <p>
-                Data Pengguna
-              </p>
-            </a>
-          </li>
-          <li class="nav-item">
+        </li>
+        <li class="nav-item">
             <a href="datapesanan" class="nav-link">
-              <i class="nav-icon fas fa-shopping-cart"></i>
-              <p>
-                Data Pesanan
-              </p>
+                <i class="nav-icon fas fa-shopping-cart"></i>
+                <p>Data Pesanan</p>
             </a>
-          </li>
-          <li class="nav-item">
+        </li>
+        <li class="nav-item">
             <a href="datatransaksi" class="nav-link">
                 <i class="nav-icon fas fa-exchange-alt"></i>
-              <p>
-                Data Transaksi
-              </p>
+                <p>Data Transaksi</p>
             </a>
-          </li>
-          <li class="nav-item">
-            <a href="dataproduk" class="nav-link">
-                <i class="nav-icon fas fa-box"></i>
-              <p>
-                Data Produk
-              </p>
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="{{ route('categories.index') }}" class="nav-link">
+        </li>
+      <li class="nav-item">
+          <a href="{{ route('produks.index') }}" class="nav-link">
+              <i class="nav-icon fas fa-box"></i>
+              <p>Data Produk</p>
+          </a>
+      </li>
+      <li class="nav-item">
+          <a href="{{ route('categories.index') }}" class="nav-link">
               <i class="nav-icon fas fa-tags"></i>
               <p>Data Kategori</p>
           </a>          
-          </li>
-          <li class="nav-item">
-            <a href="{{ route('brands.datamerek') }}" class="nav-link">
-              <i class="nav-icon fab fa-buromobelexperte"></i>
-              <p>
-                  Data Merek
-              </p>
-          </a>
-          
-          </li>
-          <li class="nav-item">
-            <a href="masuk" class="nav-link">
+      </li>
+      <li class="nav-item">
+          <form id="logout-form" action="{{ route('admin.logout') }}" method="POST" style="display: none;">
+              @csrf
+          </form>
+          <a href="{{ route('admin.login') }}" class="nav-link">
               <i class="nav-icon fas fa-sign-out-alt"></i>
-              <p>
-                LogOut
-              </p>
-            </a>
-          </li>
-        </ul>
-      </nav>
-      <!-- /.sidebar-menu -->
+              <p>LogOut</p>
+          </a>
+      </li>
+  </ul>
+</nav>
+
     </div>
+    
     <!-- /.sidebar -->
   </aside>
 

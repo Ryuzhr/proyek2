@@ -1,0 +1,226 @@
+name: Laravel CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  laravel_build:
+    name: Laravel Build
+    runs-on: ubuntu-latest
+    env:
+      DB_DATABASE: blogcms
+      DB_USERNAME: root
+      DB_PASSWORD: password
+      BROADCAST_DRIVER: log
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: false
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: blogcms
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, pdo, mysql, gd
+
+      - name: Install dependencies
+        run: composer install --no-ansi --no-interaction --no-progress --optimize-autoloader
+
+      - name: Copy file example env
+        run: cp .env.example .env
+
+      - name: Generate key
+        run: php artisan key:generate
+
+      - name: Run Migration Database
+        run: php artisan migrate:fresh --seed
+        env:
+          DB_PORT: ${{ job.services.mysql.ports['3306'] }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: "20"
+
+      - name: Install Node.js dependencies
+        run: npm install
+
+      - name: Build Node.JS
+        run: npm run build
+
+      - name: Create artifact
+        run: zip -r artifact.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: build-artifact
+          path: artifact.zip
+          retention-days: 5
+
+  laravel_test:
+    name: Laravel Test
+    runs-on: ubuntu-latest
+    needs: laravel_build
+    env:
+      DB_DATABASE: blogcms
+      DB_USERNAME: root
+      DB_PASSWORD: password
+      BROADCAST_DRIVER: log
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: false
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: blogcms
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: build-artifact
+          path: .
+
+      - name: Unzip artifact
+        run: unzip -o artifact.zip
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, pdo, mysql, gd
+
+      - name: Run Migration Database
+        run: php artisan migrate:fresh --seed
+        env:
+          DB_PORT: ${{ job.services.mysql.ports['3306'] }}
+
+      - name: Migrate PHPUnit configuration
+        run: ./vendor/bin/phpunit --migrate-configuration || true
+
+      - name: Run tests
+        run: ./vendor/bin/phpunit
+        env:
+          DB_PORT: ${{ job.services.mysql.ports['3306'] }}
+
+  laravel_notification:
+    name: Laravel Notify
+    runs-on: ubuntu-latest
+    needs: [laravel_build, laravel_test]
+    if: always()
+    env:
+      CURRENT_REPO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Notify to Telegram
+        run: |
+          if [[ "${{ needs.laravel_build.result }}" == "success" && "${{ needs.laravel_test.result }}" == "success" ]]; then
+            STATUS="CI/CD Pipeline <b>Success ✅</b>"
+          else
+            STATUS="CI/CD Pipeline <b>Failure ❌</b>"
+          fi
+          curl --request POST ${{ secrets.TELEGRAM_BOT }} \
+            -d parse_mode="HTML" \
+            -d chat_id="${{ secrets.TELEGRAM_CHANNEL }}" \
+            -d text="
+            %0A📝 Status: $STATUS
+            %0A📝 Commit: $GITHUB_SHA
+            %0A📝 Branch: $GITHUB_REF_NAME
+            %0A💬 Message: <b>${{ github.event.head_commit.message }}</b>
+            %0ACek disini: $CURRENT_REPO
+            "
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [laravel_build, laravel_test]
+    if: always()
+    env:
+      CURRENT_REPO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      ID_RSA: ${{ secrets.ID_RSA }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_IP: ${{ secrets.SERVER_IP }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: build-artifact
+          path: .
+
+      - name: Check if artifact exists
+        run: ls -lh artifact.zip
+
+      - name: Send File to Telegram
+        run: |
+          if [ -f "artifact.zip" ]; then
+            curl --request POST ${{ secrets.TELEGRAM_DEPLOY }} \
+              --header 'Accept: */*' \
+              --form 'chat_id="${{ secrets.TELEGRAM_CHANNEL }}"' \
+              --form caption=$CURRENT_REPO \
+              --form document=@./artifact.zip
+          else
+            echo "Artifact file not found!"
+          fi
+
+      - name: Unzip artifact
+        run: unzip -o artifact.zip
+
+      - name: Add SSH key
+        run: |
+          echo "${{ secrets.ID_RSA }}" > ssh_private_key_cicd_polindra
+          chmod 600 ssh_private_key_cicd_polindra
+
+      - name: Delete artifact.zip on Server Cloud
+        run: ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP -p $SSH_PORT 'rm -f artifact.zip' || true
+
+      - name: Deploy to Server
+        run: |
+          echo "Deploying application..."
+          chmod og= ssh_private_key_cicd_polindra
+          rm -f -R .git && rm -f artifact.zip
+          zip -r artifact.zip .
+          rsync -avz --info=progress2 -e "ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no -p $SSH_PORT" artifact.zip $SERVER_USER@$SERVER_IP:/home/polindra
+
+      - name: Delete All file in Deploy Directory
+        run: |
+          ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP -p $SSH_PORT 'rm -rf /var/www/laravel/* || true && rm -rf /var/www/laravel/.* || true'
+
+      - name: Extract and Remove artifact.zip
+        run: ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP -p $SSH_PORT 'mkdir -p /var/www/laravel/ || true && unzip -qq -o artifact.zip -d /var/www/laravel/ || true && rm -f artifact.zip || true'
+
+      - name: Fill .env
+        run: ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP -p $SSH_PORT 'cd /var/www/laravel/ && echo "${{ secrets.ENV_FILE_CONTENT }}" > ".env"' || true
+
+      - name: Run migration in database server and give permission to storage
+        run: ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP -p $SSH_PORT 'cd /var/www/laravel/ && php artisan migrate --force && sudo chown polindra:www-data -R ./storage && chmod -R 775 ./storage'
+
+      - name: Delete SSH Key
+        run: rm -f ssh_private_key_cicd_polindra
